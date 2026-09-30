@@ -1,0 +1,3 @@
+# Backup zips and local scratch files: never commit
+/*.zip
+/.scratch/

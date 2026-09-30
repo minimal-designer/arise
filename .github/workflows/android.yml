@@ -1,0 +1,107 @@
+name: ARISE Android
+
+# Tests, lints and builds the signed APK. scripts/arise-install.sh can pull the APK from
+# a run or a release and install it over adb. Signing: see "Build it yourself" in README.md.
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+    tags: ['v*']
+  # No pull_request trigger: PRs come from dev, whose push run already reports on the
+  # PR. Running both would build every commit twice.
+  workflow_dispatch:
+
+concurrency:
+  group: arise-android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # gh release create on tags
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode signing key
+        env:
+          ARISE_KEYSTORE_B64: ${{ secrets.ARISE_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$ARISE_KEYSTORE_B64" ]; then
+            echo "::error::ARISE_KEYSTORE_B64 is not set. Add your signing key as repo secrets first: see 'Build it yourself' in README.md"
+            exit 1
+          fi
+          echo "$ARISE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/arise.jks"
+          echo "ARISE_KEYSTORE_PATH=$RUNNER_TEMP/arise.jks" >> "$GITHUB_ENV"
+
+      - name: Test, lint and build the signed APK
+        env:
+          ARISE_STORE_PASS: ${{ secrets.ARISE_STORE_PASS }}
+          ARISE_KEY_ALIAS: ${{ secrets.ARISE_KEY_ALIAS }}
+          ARISE_KEY_PASS: ${{ secrets.ARISE_KEY_PASS }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :core:test testDebugUnitTest lintDebug assembleRelease --no-daemon --stacktrace
+
+      - name: Check the signature and name the APK
+        id: apk
+        env:
+          # Repo variable: the SHA-256 of the signing cert. Unset (a fork with its own key) skips the check.
+          CERT_SHA256: ${{ vars.ARISE_CERT_SHA256 }}
+        run: |
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          SRC=app/build/outputs/apk/release/app-release.apk
+          "$BT/apksigner" verify --print-certs "$SRC" | tee "$RUNNER_TEMP/certs.txt"
+          if [ -n "$CERT_SHA256" ]; then
+            grep -qi "SHA-256 digest: $CERT_SHA256" "$RUNNER_TEMP/certs.txt" \
+              || { echo "::error::APK is not signed with the expected key (ARISE_CERT_SHA256)"; exit 1; }
+          fi
+          VER=$("$BT/aapt2" dump badging "$SRC" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+          NAME="arise-${VER}-${GITHUB_RUN_NUMBER}.apk"
+          mkdir -p out && cp "$SRC" "out/$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arise-apk
+          path: android/out/*.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload Room schemas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-schemas
+          path: android/app/schemas/
+          if-no-files-found: ignore
+
+      - name: Upload reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            android/core/build/reports/
+            android/app/build/reports/
+
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "out/${{ steps.apk.outputs.name }}" --title "ARISE $GITHUB_REF_NAME" --generate-notes
