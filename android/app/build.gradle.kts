@@ -7,7 +7,7 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-val VERSION = "1.1.0"
+val VERSION = "1.2.0"
 
 // Set by .github/workflows/android.yml from repo secrets. Without them the release APK is
 // unsigned, and scripts/arise-install.sh refuses it. See the README to sign with your own key.

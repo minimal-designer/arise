@@ -11,7 +11,9 @@ import androidx.health.connect.client.feature.ExperimentalMindfulnessSessionApi
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeightRecord
+import androidx.health.connect.client.records.HydrationRecord
 import androidx.health.connect.client.records.MindfulnessSessionRecord
+import androidx.health.connect.client.records.NutritionRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
@@ -20,6 +22,7 @@ import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import com.minimaldesigner.arise.core.HealthData
+import com.minimaldesigner.arise.core.HealthMeal
 import com.minimaldesigner.arise.core.HealthMindful
 import com.minimaldesigner.arise.core.HealthSleep
 import com.minimaldesigner.arise.core.HealthWorkout
@@ -46,6 +49,9 @@ enum class HealthKind(val label: String, val record: KClass<out Record>, private
     STEPS("Steps", StepsRecord::class),
     /** Only where the phone's Health Connect supports it (see [HealthState.supported]). */
     MINDFULNESS("Mindfulness", MindfulnessSessionRecord::class, "android.permission.health.READ_MINDFULNESS"),
+    // 1.2.0: the Food tab and the water hint.
+    NUTRITION("Food", NutritionRecord::class),
+    HYDRATION("Water", HydrationRecord::class),
     ;
 
     val permission: String get() = fixedPermission ?: HealthPermission.getReadPermission(record)
@@ -78,7 +84,7 @@ data class HealthState(
 }
 
 /**
- * Reads weight, height, workouts, sleep, steps and mindfulness from Health Connect. Nothing is copied
+ * Reads weight, height, workouts, sleep, steps, mindfulness, food and water from Health Connect. Nothing is copied
  * into Room: Health Connect is already on the phone, so each refresh reads it again.
  */
 class HealthRepository(private val context: Context) {
@@ -225,7 +231,27 @@ class HealthRepository(private val context: Context) {
                 HealthMindful(LocalDateTime.ofInstant(r.startTime, zone), LocalDateTime.ofInstant(r.endTime, zone), r.title?.takeIf { it.isNotBlank() })
             }.sortedBy { it.start }
         }
-        return HealthData(height, weights, workouts, sleeps, steps, mindful) to failed
+        val meals = kind(HealthKind.NUTRITION, emptyList()) {
+            readAll(c, NutritionRecord::class, recent).map { r ->
+                HealthMeal(
+                    time = LocalDateTime.ofInstant(r.startTime, zone),
+                    name = r.name?.takeIf { it.isNotBlank() },
+                    mealType = r.mealType,
+                    kcal = r.energy?.inKilocalories,
+                    protein = r.protein?.inGrams,
+                    carbs = r.totalCarbohydrate?.inGrams,
+                    fat = r.totalFat?.inGrams,
+                )
+            }.sortedBy { it.time }
+        }
+        val water = kind(HealthKind.HYDRATION, emptyMap()) {
+            // Aggregated per day, like steps, so two apps logging the same glass count once.
+            val from = today.minusDays(RECENT_DAYS - 1).atStartOfDay()
+            c.aggregateGroupByPeriod(
+                AggregateGroupByPeriodRequest(setOf(HydrationRecord.VOLUME_TOTAL), TimeRangeFilter.between(from, LocalDateTime.now(zone)), Period.ofDays(1)),
+            ).mapNotNull { g -> g.result[HydrationRecord.VOLUME_TOTAL]?.let { g.startTime.toLocalDate() to it.inLiters } }.toMap()
+        }
+        return HealthData(height, weights, workouts, sleeps, steps, mindful, meals, water) to failed
     }
 
     /** Every page of a read. */
@@ -246,7 +272,7 @@ class HealthRepository(private val context: Context) {
 
         /** How old a read can get before opening the app reads again. */
         const val STALE_MS = 5 * 60 * 1000L
-        /** Days of workouts, sleep and steps to read. */
+        /** Days of workouts, sleep, steps, food and water to read. */
         const val RECENT_DAYS = 30L
 
         private val AWAKE = setOf(

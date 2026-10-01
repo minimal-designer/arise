@@ -21,22 +21,11 @@ class HealthTest {
         assertEquals(BmiBand.OBESE, bmiBand(30.0))
     }
 
-    @Test fun healthWeightsWinOverTheFoodLog() {
-        val food = FoodLog(
-            weighIns = listOf(
-                WeighIn("2026-09-08", 82.0, "home"),
-                WeighIn("2026-09-23", 78.4, "gym"),
-                WeighIn("2026-09-25", 80.9, "home"),
-            ),
-        )
-        val (fromFood, src) = bodyWeights(HealthData(), food)
-        assertEquals(WeightSource.FOOD, src)
-        // Only the first weigh-in's scale.
-        assertEquals(listOf(82.0, 80.9), fromFood.map { it.kg })
-
+    @Test fun weightsComeFromHealthConnect() {
         val health = HealthData(weights = listOf(WeightPoint(d("2026-09-20"), 95.0)))
-        assertEquals(WeightSource.HEALTH, bodyWeights(health, food).second)
-        assertEquals(WeightSource.NONE, bodyWeights(null, null).second)
+        assertEquals(WeightSource.HEALTH to listOf(95.0), bodyWeights(health).let { it.second to it.first.map { w -> w.kg } })
+        assertEquals(WeightSource.NONE, bodyWeights(HealthData()).second)
+        assertEquals(WeightSource.NONE, bodyWeights(null).second)
     }
 
     @Test fun startWeightIsTheOneAtDayOne() {

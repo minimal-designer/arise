@@ -2,7 +2,6 @@ package com.minimaldesigner.arise.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -53,7 +52,9 @@ import com.minimaldesigner.arise.core.FoodDay
 import com.minimaldesigner.arise.core.FoodLog
 import com.minimaldesigner.arise.core.Meal
 import com.minimaldesigner.arise.core.averageKcal
-import com.minimaldesigner.arise.data.FoodState
+import com.minimaldesigner.arise.data.HealthAccess
+import com.minimaldesigner.arise.data.HealthKind
+import com.minimaldesigner.arise.data.HealthState
 import com.minimaldesigner.arise.ui.components.Btn
 import com.minimaldesigner.arise.ui.components.BtnKind
 import com.minimaldesigner.arise.ui.components.Card
@@ -77,7 +78,6 @@ import com.minimaldesigner.arise.ui.theme.LocalArise
 import com.minimaldesigner.arise.ui.theme.Radius
 import com.minimaldesigner.arise.ui.theme.Type
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -89,11 +89,10 @@ private const val CHART_DAYS = 30
 
 private fun n(v: Double) = fmtInt(v.roundToInt())
 
-/** `#v-food`: day strip, calories, macros, meals and the calorie chart, from arise-food. */
+/** `#v-food`: day strip, calories, macros, meals and the calorie chart, from Health Connect (1.2.0). */
 @Composable
-fun Food(food: FoodState, today: LocalDate, onSync: () -> Unit, onOpenSettings: () -> Unit) {
+fun Food(log: FoodLog?, health: HealthState, onRefresh: () -> Unit, onConnect: () -> Unit) {
     val c = LocalArise.current
-    val log = food.log
     var sel by rememberSaveable { mutableStateOf<String?>(null) }
     val d = log?.let { l -> l.days.firstOrNull { it.date == sel } ?: l.days.lastOrNull() }
 
@@ -102,7 +101,7 @@ fun Food(food: FoodState, today: LocalDate, onSync: () -> Unit, onOpenSettings: 
             if (d != null) Txt(fmtLong(d.day), Type.small, c.ink3, Modifier.padding(bottom = 6.dp))
         }
         if (log == null || d == null) {
-            NoFood(food, onSync, onOpenSettings)
+            NoFood(health, onRefresh, onConnect)
             return@Column
         }
         DateStrip(log.days, d.date) { sel = it }
@@ -110,26 +109,25 @@ fun Food(food: FoodState, today: LocalDate, onSync: () -> Unit, onOpenSettings: 
         Macros(log, d)
         MealsPanel(d)
         KcalChart(log, d) { sel = it }
-        SyncLine(food, today, onSync)
+        SourceLine(health, onRefresh)
     }
 }
 
-/** Before the first good sync: explain what's missing. */
+/** No meals to show: say where food comes from and what to do. */
 @Composable
-private fun NoFood(food: FoodState, onSync: () -> Unit, onOpenSettings: () -> Unit) {
+private fun NoFood(health: HealthState, onRefresh: () -> Unit, onConnect: () -> Unit) {
     when {
-        !food.configured -> {
-            EmptyBox("Your food log syncs here from your arise-food server. Add its address and token in Profile & settings → Data → Food log.")
-            Btn("Open Profile & settings", onOpenSettings, Modifier.fillMaxWidth(), BtnKind.Accent)
+        health.access != HealthAccess.ON || HealthKind.NUTRITION !in health.granted -> {
+            EmptyBox(
+                "Food comes from Health Connect. Log meals in an app that writes to it, like MyFitnessPal, " +
+                    "Cronometer or Samsung Health, then let ARISE read Food.",
+            )
+            Btn("Connect Health Connect", onConnect, Modifier.fillMaxWidth(), BtnKind.Accent)
         }
-        food.syncing -> EmptyBox("Syncing with the server…")
-        food.error != null -> {
-            EmptyBox(food.error)
-            Btn("Try again", onSync, Modifier.fillMaxWidth(), BtnKind.Accent)
-        }
+        health.reading -> EmptyBox("Reading Health Connect…")
         else -> {
-            EmptyBox("No food logged yet.")
-            Btn("Sync now", onSync, Modifier.fillMaxWidth(), BtnKind.Ghost)
+            EmptyBox(health.error ?: "No meals in Health Connect in the last 30 days. Log one in your food app, then refresh.")
+            Btn("Refresh", onRefresh, Modifier.fillMaxWidth(), BtnKind.Ghost)
         }
     }
 }
@@ -206,22 +204,21 @@ private fun Meter(fraction: Float, height: Int, track: Color, fill: Color) {
 /** `.macros`: protein, carbs and fat against their goals. */
 @Composable
 private fun Macros(log: FoodLog, d: FoodDay) {
-    val since = log.carbsFatSince?.let { runCatching { fmtShort(LocalDate.parse(it)) }.getOrNull() }
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Macro("Protein", d.protein, log.goals.protein, since, Modifier.weight(1f).fillMaxHeight())
-        Macro("Carbs", d.carbs, log.goals.carbs, since, Modifier.weight(1f).fillMaxHeight())
-        Macro("Fat", d.fat, log.goals.fat, since, Modifier.weight(1f).fillMaxHeight())
+        Macro("Protein", d.protein, log.goals.protein, Modifier.weight(1f).fillMaxHeight())
+        Macro("Carbs", d.carbs, log.goals.carbs, Modifier.weight(1f).fillMaxHeight())
+        Macro("Fat", d.fat, log.goals.fat, Modifier.weight(1f).fillMaxHeight())
     }
 }
 
 @Composable
-private fun Macro(label: String, value: Double?, goal: Double?, since: String?, modifier: Modifier) {
+private fun Macro(label: String, value: Double?, goal: Double?, modifier: Modifier) {
     val c = LocalArise.current
     Card(modifier, padding = PaddingValues(14.dp)) {
         Lbl(label)
         if (value == null) {
             Num("–", 26f, c.ink3, Modifier.padding(top = 4.dp))
-            Txt(if (since != null) "Tracked from $since" else "Not tracked", Type.sub.copy(fontSize = 11.5.sp), c.ink3, Modifier.padding(top = 6.dp))
+            Txt("Not tracked", Type.sub.copy(fontSize = 11.5.sp), c.ink3, Modifier.padding(top = 6.dp))
         } else {
             Row(Modifier.padding(top = 2.dp)) {
                 Num(n(value), 26f, modifier = Modifier.alignByBaseline())
@@ -249,9 +246,6 @@ private fun MealsPanel(d: FoodDay) {
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { d.meals.forEach { MealRow(it) } }
         }
-        d.overall?.takeIf { it.isNotBlank() }?.let {
-            Txt(it, Type.body.copy(fontSize = 13.5.sp, lineHeight = 19.sp), c.panelInk.fade(0.75f))
-        }
     }
 }
 
@@ -262,13 +256,7 @@ private fun MealRow(m: Meal) {
         Modifier.fillMaxWidth().clip(Radius.row).background(c.card2).padding(horizontal = 14.dp, vertical = 13.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Lbl(listOfNotNull(m.slot, m.time).joinToString(" · "), size = 10.5f)
-            val tagColor = if (m.est) c.warn else c.good
-            Box(Modifier.clip(Radius.pill).border(1.dp, tagColor, Radius.pill).padding(horizontal = 8.dp, vertical = 1.dp)) {
-                Txt(if (m.est) "estimate" else "exact", Type.sub.copy(fontSize = 11.sp, lineHeight = 15.sp), tagColor)
-            }
-        }
+        Lbl(listOfNotNull(m.slot, m.time).joinToString(" · "), size = 10.5f)
         m.what?.let { Txt(it, Type.body) }
         val rest = listOfNotNull(
             m.protein?.let { "${n(it)} g P" },
@@ -350,21 +338,16 @@ private fun KcalChart(log: FoodLog, d: FoodDay, onPick: (String) -> Unit) {
     }
 }
 
-private val hm = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
-private val dhm = DateTimeFormatter.ofPattern("d MMM, h:mm a", Locale.US)
+private val hm = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
-/** `#food-src`: where the numbers come from, when they last synced, and Sync now. */
+/** `#food-src`: where the numbers come from, when Health Connect was last read, and Refresh. */
 @Composable
-private fun SyncLine(food: FoodState, today: LocalDate, onSync: () -> Unit) {
+private fun SourceLine(health: HealthState, onRefresh: () -> Unit) {
     val c = LocalArise.current
-    val at = food.syncedAt?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()) }
-    val whenText = at?.let { (if (it.toLocalDate() == today) hm else dhm).format(it).lowercase(Locale.US) }
+    val at = health.readAt?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()) }
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Txt(
-            "From your arise-food server" + (whenText?.let { " · synced $it" } ?: ""),
-            Type.sub, c.ink3, align = TextAlign.Center,
-        )
-        if (food.error != null) Txt("Last sync failed: ${food.error}", Type.sub, c.warn, align = TextAlign.Center)
-        if (food.syncing) Txt("Syncing…", Type.sub, c.ink3) else LinkButton("Sync now", onSync, c.ink2)
+        Txt("From Health Connect" + (at?.let { " · read ${hm.format(it)}" } ?: ""), Type.sub, c.ink3, align = TextAlign.Center)
+        if (health.error != null) Txt(health.error, Type.sub, c.warn, align = TextAlign.Center)
+        if (health.reading) Txt("Reading…", Type.sub, c.ink3) else LinkButton("Refresh", onRefresh, c.ink2)
     }
 }

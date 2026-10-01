@@ -104,4 +104,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "out/${{ steps.apk.outputs.name }}" --title "ARISE $GITHUB_REF_NAME" --generate-notes
+        # Also as plain arise.apk, so releases/latest/download/arise.apk (the README's download link) always works.
+        run: |
+          cp "out/${{ steps.apk.outputs.name }}" out/arise.apk
+          gh release create "$GITHUB_REF_NAME" "out/${{ steps.apk.outputs.name }}" out/arise.apk --title "ARISE ${GITHUB_REF_NAME#v}" --generate-notes

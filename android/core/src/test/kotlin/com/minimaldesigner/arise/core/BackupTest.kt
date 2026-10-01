@@ -58,6 +58,11 @@ class BackupTest {
         assertNull(BackupJson.decode(BackupJson.encode(backup)).meta.pause)
     }
 
+    @Test fun carriesFoodGoals() {
+        val withGoals = backup.copy(meta = BackupMeta(foodGoals = FoodGoals(kcal = 2000.0, protein = 150.0, waterL = 3.0)))
+        assertEquals(withGoals, BackupJson.decode(BackupJson.encode(withGoals)))
+    }
+
     @Test fun readsVersionOneBackups() {
         val v1 = """{"format":"arise-backup","version":1,"createdAt":"2026-09-27T09:00:00Z","days":[{"date":"2026-09-19","done":{"w1":"t"}}]}"""
         val b = BackupJson.decode(v1)

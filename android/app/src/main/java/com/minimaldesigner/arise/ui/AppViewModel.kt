@@ -27,8 +27,10 @@ import com.minimaldesigner.arise.ui.theme.NumStyle
 import java.io.File
 import com.minimaldesigner.arise.core.PhotoSource
 import com.minimaldesigner.arise.core.TaskKind
-import com.minimaldesigner.arise.data.FoodApi
-import com.minimaldesigner.arise.data.FoodState
+import com.minimaldesigner.arise.core.FoodGoals
+import com.minimaldesigner.arise.core.FoodLog
+import com.minimaldesigner.arise.core.foodLog
+import com.minimaldesigner.arise.data.HealthKind
 import com.minimaldesigner.arise.data.HealthState
 import com.minimaldesigner.arise.data.Reminders
 import com.minimaldesigner.arise.data.Photo
@@ -56,7 +58,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -76,14 +77,18 @@ data class AppState(
     val clock: Clock = Clock(LocalDate.now(), LocalDateTime.now().hour),
     val settings: Settings = Settings(),
     val sample: Boolean = false,
-    val food: FoodState = FoodState(),
     val health: HealthState = HealthState(),
+    /** Meals from Health Connect with the goals set in ARISE, or null until Health Connect has been read. */
+    val food: FoodLog? = null,
     val meta: AppMeta = AppMeta(),
     val history: List<PastRun> = emptyList(),
     /** The profile photo's thumbnail, if one is set. */
     val profileThumb: File? = null,
 ) {
     val theme: ThemePref get() = settings.theme
+
+    /** Food shows (the tab, the calories card) once Health Connect shares nutrition (1.2.0). */
+    val foodOn: Boolean get() = HealthKind.NUTRITION in health.granted
 
     /** The live challenge's break, if any. Sample mode never has one. */
     val pause: PauseState? get() = if (sample) null else pauseState(meta.pause, clock.today)
@@ -101,7 +106,6 @@ private data class Stored(val run: Run?, val days: Days, val photos: List<Photo>
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = (app as AriseApp).challenges
     private val prefs = (app as AriseApp).prefs
-    private val food = (app as AriseApp).food
     private val backups = (app as AriseApp).backups
     val health = (app as AriseApp).health
 
@@ -126,23 +130,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val stored = combine(repo.run, repo.liveDays, repo.photos, repo.meta, repo.history) { r, d, p, m, h -> Stored(r, d, p, m, h) }
 
-    private val outside = combine(food.state, health.state) { f, h -> f to h }
-
-    val state: StateFlow<AppState> = combine(stored, clock, prefs.settings, sample, outside) { st, c, settings, s, (f, h) ->
+    val state: StateFlow<AppState> = combine(stored, clock, prefs.settings, sample, health.state) { st, c, settings, s, h ->
         // Sample mode has no photos: nothing in it is saved. Food, Health and the profile are the real ones either way.
         val thumb = st.meta.profileThumb(photoStore)?.takeIf { it.exists() }
-        if (s != null) AppState(false, s.run, s.days, emptyList(), c, settings, sample = true, food = f, health = h, meta = st.meta, profileThumb = thumb)
-        else AppState(false, st.run, st.days, st.photos, c, settings, food = f, health = h, meta = st.meta, history = st.history, profileThumb = thumb)
+        val f = h.data?.let { foodLog(it.meals, st.meta.foodGoals) }
+        if (s != null) AppState(false, s.run, s.days, emptyList(), c, settings, sample = true, health = h, food = f, meta = st.meta, profileThumb = thumb)
+        else AppState(false, st.run, st.days, st.photos, c, settings, health = h, food = f, meta = st.meta, history = st.history, profileThumb = thumb)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, AppState())
 
     init {
-        // Show the saved copy at once, then sync at start-up and whenever the address or token changes.
-        viewModelScope.launch {
-            food.load()
-            prefs.settings
-                .distinctUntilChanged { a, b -> a.nasUrl == b.nasUrl && a.token == b.token }
-                .collect { food.sync(it, force = true) }
-        }
+        // 1.2.0: food comes from Health Connect; forget the old server's address and token.
+        viewModelScope.launch { prefs.dropFoodServer() }
         // Re-arm the evening reminder at start-up and whenever it's switched or moved.
         viewModelScope.launch {
             prefs.settings
@@ -414,16 +412,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun saveFoodSync(url: String, token: String) {
+    fun setFoodGoals(goals: FoodGoals) {
         viewModelScope.launch {
-            prefs.setFoodSync(url, token)
-            say("Food sync settings saved")
+            repo.setFoodGoals(goals)
+            say("Food goals saved")
         }
-    }
-
-    /** Refreshes the food log: always when [force] (Sync now), else only if the copy is stale. */
-    fun syncFood(force: Boolean) {
-        viewModelScope.launch { food.sync(prefs.settings.first(), force) }
     }
 
     /** Re-reads Health Connect: always when [force], else only if the last read is getting old. */
@@ -438,9 +431,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             say(if (granted.isEmpty()) "Nothing shared from Health Connect" else "Health Connect connected")
         }
     }
-
-    /** Checks the server with the values currently typed (saved or not). */
-    suspend fun testFoodSync(url: String, token: String): String = FoodApi.check(url, token)
 
     // ---- photos ----
 

@@ -10,6 +10,7 @@ import com.minimaldesigner.arise.core.withDerivedTicks
 import com.minimaldesigner.arise.core.DayRecord
 import com.minimaldesigner.arise.core.MetaJson
 import com.minimaldesigner.arise.core.MetaKey
+import com.minimaldesigner.arise.core.FoodGoals
 import com.minimaldesigner.arise.core.Pause
 import com.minimaldesigner.arise.core.decodePause
 import com.minimaldesigner.arise.core.encodePause
@@ -50,6 +51,7 @@ data class AppMeta(
     val pins: PhotoPins = PhotoPins(),
     val challenge: ChallengeInfo = ChallengeInfo(),
     val pause: Pause? = null,
+    val foodGoals: FoodGoals = FoodGoals(),
 ) {
     /** The day the live challenge was set up or last restarted, if known. */
     val startedOn: LocalDate? get() = challenge.startedOn?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
@@ -122,6 +124,7 @@ class ChallengeRepository(private val db: AriseDb, private val store: PhotoStore
             MetaJson.decode(PhotoPins.serializer(), m[MetaKey.PINS.key], PhotoPins()),
             MetaJson.decode(ChallengeInfo.serializer(), m[MetaKey.CHALLENGE.key], ChallengeInfo()),
             decodePause(m[MetaKey.PAUSE.key]),
+            MetaJson.decode(FoodGoals.serializer(), m[MetaKey.FOOD_GOALS.key], FoodGoals()),
         )
     }
 
@@ -137,6 +140,8 @@ class ChallengeRepository(private val db: AriseDb, private val store: PhotoStore
     suspend fun setProfile(p: Profile) = dao.upsertMeta(MetaEntity(MetaKey.PROFILE.key, MetaJson.encode(Profile.serializer(), p)))
     suspend fun setReading(r: Reading) = dao.upsertMeta(MetaEntity(MetaKey.READING.key, MetaJson.encode(Reading.serializer(), r)))
     suspend fun setPins(p: PhotoPins) = dao.upsertMeta(MetaEntity(MetaKey.PINS.key, MetaJson.encode(PhotoPins.serializer(), p)))
+    suspend fun setFoodGoals(g: FoodGoals) = dao.upsertMeta(MetaEntity(MetaKey.FOOD_GOALS.key, MetaJson.encode(FoodGoals.serializer(), g)))
+
     /** Starts, moves or (null) clears the break. */
     suspend fun setPause(p: Pause?) =
         if (p == null) dao.deleteMeta(MetaKey.PAUSE.key) else dao.upsertMeta(MetaEntity(MetaKey.PAUSE.key, encodePause(p)))

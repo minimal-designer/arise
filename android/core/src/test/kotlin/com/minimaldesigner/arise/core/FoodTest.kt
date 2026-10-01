@@ -4,39 +4,49 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 class FoodTest {
-    // Shaped like arise-food's /v1/food, including a key the app doesn't know yet.
-    private val body = """
-        {"sha":"abc1234","pulledAt":"2026-09-27T01:32:26+00:00","somethingNew":1,
-         "goals":{"kcal":2300,"protein":190,"carbs":230,"fat":70,"waterL":3.5},
-         "carbsFatSince":"2026-09-24",
-         "weighIns":[
-           {"date":"2026-09-08","kg":82.0,"scale":"home","note":"starting weight"},
-           {"date":"2026-09-23","kg":78.4,"scale":"gym"},
-           {"date":"2026-09-25","kg":80.9,"scale":"home"}],
-         "days":[
-           {"date":"2026-09-25","kcal":1950,"protein":104,"carbs":259,"fat":55,"weight":null,
-            "meals":[{"slot":"Breakfast","time":null,"what":"Oats","kcal":585,"protein":36,"carbs":69,"fat":18,"est":false}]},
-           {"date":"2026-09-08","kcal":1716,"protein":86,"carbs":null,"fat":null,"overall":"Full day",
-            "meals":[{"slot":"Lunch","what":"Sandwich","kcal":586.5,"protein":37,"est":true}]}]}
-    """.trimIndent()
-
-    private val log = FoodJson.parse(body)
+    private fun t(s: String) = LocalDateTime.parse(s)
     private fun d(s: String) = LocalDate.parse(s)
 
-    @Test fun parsesAndSortsDaysOldestFirst() {
-        assertEquals(listOf("2026-09-08", "2026-09-25"), log.days.map { it.date })
-        assertEquals(2300.0, log.goals.kcal)
-        assertNull(log.days[0].carbs)
-        assertEquals(586.5, log.days[0].meals[0].kcal)
-        assertEquals(true, log.days[0].meals[0].est)
-        assertEquals(false, log.days[1].meals[0].est)
-        assertEquals("gym", log.weighIns[1].scale)
+    // Health Connect meals, out of order, across two days; one has no macros, one no name.
+    private val meals = listOf(
+        HealthMeal(t("2026-09-25T19:30"), "Salmon and rice", 3, kcal = 700.0, protein = 45.0, carbs = 60.0, fat = 25.0),
+        HealthMeal(t("2026-09-25T08:00"), "Oats", 1, kcal = 450.0, protein = 20.0, carbs = 70.0, fat = 10.0),
+        HealthMeal(t("2026-09-24T13:00"), "  ", 2, kcal = 600.0),
+        HealthMeal(t("2026-09-25T16:00"), "Apple", 4, kcal = 80.0, protein = null, carbs = 20.0),
+    )
+    private val goals = FoodGoals(kcal = 2000.0, protein = 150.0)
+    private val log = foodLog(meals, goals)
+
+    @Test fun groupsByDayOldestFirstWithMealsInTimeOrder() {
+        assertEquals(listOf("2026-09-24", "2026-09-25"), log.days.map { it.date })
+        assertEquals(listOf("08:00", "16:00", "19:30"), log.days[1].meals.map { it.time })
+        assertEquals(listOf("Breakfast", "Snack", "Dinner"), log.days[1].meals.map { it.slot })
+        assertEquals(goals, log.goals)
     }
 
-    @Test fun emptyObjectParses() {
-        val empty = FoodJson.parse("{}")
+    @Test fun dayTotalsAddWhatIsThere() {
+        val day = log.days[1]
+        assertEquals(1230.0, day.kcal!!, 1e-9)
+        assertEquals(65.0, day.protein!!, 1e-9) // the apple has no protein: skipped, not zero
+        assertEquals(150.0, day.carbs!!, 1e-9)
+        val lunch = log.days[0]
+        assertEquals(600.0, lunch.kcal!!, 1e-9)
+        assertNull(lunch.protein) // nothing logged a value
+    }
+
+    @Test fun namesAndSlotsHaveFallbacks() {
+        val m = log.days[0].meals.single()
+        assertEquals("Lunch", m.slot)
+        assertEquals("Logged food", m.what)
+        assertEquals("Meal", mealSlot(0))
+        assertEquals("Meal", mealSlot(99))
+    }
+
+    @Test fun emptyHasNoDays() {
+        val empty = foodLog(emptyList(), FoodGoals())
         assertEquals(0, empty.days.size)
         assertNull(homeDay(empty, d("2026-09-25")))
     }
@@ -44,21 +54,11 @@ class FoodTest {
     @Test fun homeDayIsTodayElseLatest() {
         assertEquals("2026-09-25", homeDay(log, d("2026-09-25"))?.date)
         assertEquals("2026-09-25", homeDay(log, d("2026-09-27"))?.date)
-        assertEquals("2026-09-08", homeDay(log, d("2026-09-08"))?.date)
-    }
-
-    @Test fun weightUsesTheFirstScaleOnly() {
-        assertNull(weightOn(log, d("2026-09-07")))
-        assertEquals(82.0, weightOn(log, d("2026-09-08"))!!, 1e-9)
-        // The gym 78.4 on the 23rd is a different scale, so it's ignored.
-        assertEquals(82.0, weightOn(log, d("2026-09-24"))!!, 1e-9)
-        assertEquals(80.9, weightOn(log, d("2026-09-26"))!!, 1e-9)
-        assertEquals(-1.1, weightChange(log, d("2026-09-08"), d("2026-09-26"))!!, 1e-9)
-        assertNull(weightChange(log, d("2026-09-01"), d("2026-09-26")))
+        assertEquals("2026-09-24", homeDay(log, d("2026-09-24"))?.date)
     }
 
     @Test fun averageSkipsMissingDays() {
-        assertEquals((1716 + 1950) / 2.0, averageKcal(log.days)!!, 1e-9)
+        assertEquals((600.0 + 1230.0) / 2, averageKcal(log.days)!!, 1e-9)
         assertNull(averageKcal(emptyList()))
     }
 }

@@ -38,7 +38,7 @@ data class ChallengeInfo(val startedOn: String? = null)
 @Serializable
 data class PhotoPins(val before: String? = null, val after: String? = null)
 
-enum class MetaKey(val key: String) { PROFILE("profile"), READING("reading"), PINS("pins"), CHALLENGE("challenge"), PAUSE("pause") }
+enum class MetaKey(val key: String) { PROFILE("profile"), READING("reading"), PINS("pins"), CHALLENGE("challenge"), PAUSE("pause"), FOOD_GOALS("foodGoals") }
 
 object MetaJson {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }

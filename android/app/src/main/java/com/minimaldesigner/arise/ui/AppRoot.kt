@@ -177,12 +177,10 @@ fun AppRoot(vm: AppViewModel, state: AppState) {
             val run = if (state.loading) null else state.run
             val scroll = rememberScrollState()
             LaunchedEffect(tab, run == null, page) { scroll.scrollTo(0) }
-            // Food is optional: its tab only shows once a server is set up.
-            val foodOn = state.settings.foodOn
+            // Food is optional: its tab only shows once Health Connect shares nutrition.
+            val foodOn = state.foodOn
             val tabs = remember(foodOn) { if (foodOn) Tab.entries.toList() else Tab.entries - Tab.Food }
             LaunchedEffect(tabs) { if (tab !in tabs) tab = Tab.Home }
-            // Home and Food show food numbers: refresh them if the copy is getting old.
-            LaunchedEffect(tab, state.clock, foodOn) { if (foodOn && (tab == Tab.Home || tab == Tab.Food)) vm.syncFood(force = false) }
             BackHandler(enabled = run != null && page != null) { page = if (page == SettingsPage.HUB) null else SettingsPage.HUB }
             val keep = keepLine(state.photos.size, state.meta.pins.before != null)
 
@@ -204,7 +202,7 @@ fun AppRoot(vm: AppViewModel, state: AppState) {
                     val shownPage = page ?: SettingsPage.HUB
                     ProfileScreen(
                         shownPage, run, compute(run, state.days, state.clock.today), state.settings, state.meta, state.history,
-                        state.profileThumb, state.food.log, state.health, state.photos.size,
+                        state.profileThumb, state.health, state.photos.size,
                         books = bookLog(state.meta.reading, state.days),
                         meditateApp = meditateLabel,
                         onPage = { page = it },
@@ -223,8 +221,7 @@ fun AppRoot(vm: AppViewModel, state: AppState) {
                         onCelebrate = vm::setCelebrate,
                         onChooseMeditateApp = { choosingApp = true },
                         onReminder = vm::setReminder,
-                        onSaveFoodSync = vm::saveFoodSync,
-                        onTestFoodSync = vm::testFoodSync,
+                        onFoodGoals = vm::setFoodGoals,
                         busy = busy,
                         onBackup = vm::backup,
                         onRestore = vm::restore,
@@ -431,12 +428,12 @@ private fun RunTabs(
                 onConnectHealth = onConnectHealth,
                 pause = state.pause as? PauseState.Active,
                 onEndPause = vm::endPauseEarly,
-                foodOn = state.settings.foodOn,
+                foodOn = state.foodOn,
             )
             Tab.Week -> Week(run, state.days, p, weekOffset, state.pause?.pause) { onWeekOffset(it.coerceAtMost(0)) }
-            Tab.Food -> Food(state.food, state.clock.today, onSync = { vm.syncFood(force = true) }, onOpenSettings = onProfile)
+            Tab.Food -> Food(state.food, state.health, onRefresh = { vm.refreshHealth(force = true) }, onConnect = onConnectHealth)
             Tab.Photos -> Photos(
-                run, state.attempts, state.photos, state.food.log, state.health.data, state.meta.pins,
+                run, state.attempts, state.photos, state.health.data, state.meta.pins,
                 onAdd = onAddPhoto, onOpen = { onViewPhoto(it.meta.id) }, onPick = onPick,
             )
         }

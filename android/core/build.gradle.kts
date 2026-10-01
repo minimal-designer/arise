@@ -20,7 +20,7 @@ kotlin {
 }
 
 dependencies {
-    // Food JSON from arise-food (github.com/minimal-designer/arise-food). api: the app reads these models too.
+    // Backups and meta values are JSON. api: the app reads these models too.
     api(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
 }

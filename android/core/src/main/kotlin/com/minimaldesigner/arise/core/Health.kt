@@ -39,6 +39,10 @@ data class HealthData(
     val sleeps: List<HealthSleep> = emptyList(),
     val steps: Map<LocalDate, Long> = emptyMap(),
     val mindful: List<HealthMindful> = emptyList(),
+    /** 1.2.0: meals from food apps, for the Food tab (see [foodLog]). */
+    val meals: List<HealthMeal> = emptyList(),
+    /** 1.2.0: litres of water per day. */
+    val waterL: Map<LocalDate, Double> = emptyMap(),
 )
 
 // ---- body ----
@@ -60,23 +64,12 @@ fun bmiBand(bmi: Double): BmiBand = when {
     else -> BmiBand.OBESE
 }
 
-enum class WeightSource { HEALTH, FOOD, NONE }
+enum class WeightSource { HEALTH, NONE }
 
-/** The food log's weigh-ins from the first weigh-in's scale, oldest first (see [weightOn]). */
-fun foodWeights(log: FoodLog?): List<WeightPoint> {
-    val ws = log?.weighIns.orEmpty()
-    val scale = ws.firstOrNull()?.scale
-    return ws.filter { it.scale == scale && it.kg != null }
-        .mapNotNull { w -> runCatching { WeightPoint(LocalDate.parse(w.date), w.kg!!) }.getOrNull() }
-        .sortedBy { it.date }
-}
-
-/** Health Connect weights when there are any, else the food log's. */
-fun bodyWeights(health: HealthData?, food: FoodLog?): Pair<List<WeightPoint>, WeightSource> {
+/** Health Connect's weights (one a day, oldest first), and whether there are any. */
+fun bodyWeights(health: HealthData?): Pair<List<WeightPoint>, WeightSource> {
     val h = health?.weights.orEmpty()
-    if (h.isNotEmpty()) return h to WeightSource.HEALTH
-    val f = foodWeights(food)
-    return f to (if (f.isEmpty()) WeightSource.NONE else WeightSource.FOOD)
+    return h to (if (h.isEmpty()) WeightSource.NONE else WeightSource.HEALTH)
 }
 
 /** The latest weight on or before [date]. */

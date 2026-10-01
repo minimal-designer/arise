@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- The optional food log: sync with a self-hosted arise-food server. -->
-    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- No INTERNET permission (1.2.0): ARISE never goes online. -->
     <!-- The evening reminder: post it, and re-arm its alarm after a reboot. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Health Connect: read-only. Weight, height and BMI on Profile, workouts, sleep, steps and mindfulness. -->
+    <!-- Health Connect: read-only. Weight, height and BMI on Profile, workouts, sleep, steps, mindfulness, food and water. -->
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
     <uses-permission android:name="android.permission.health.READ_HEIGHT" />
     <uses-permission android:name="android.permission.health.READ_EXERCISE" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.READ_MINDFULNESS" />
+    <uses-permission android:name="android.permission.health.READ_NUTRITION" />
+    <uses-permission android:name="android.permission.health.READ_HYDRATION" />
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
 
     <!-- Lets ARISE see whether the Health Connect app is installed (Android 13 and older). -->

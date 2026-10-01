@@ -23,18 +23,10 @@ data class Settings(
     val celebrate: Boolean = true,
     /** The Meditate task's app, as a package name; empty until one is picked. */
     val meditateApp: String = "",
-    val nasUrl: String = DEFAULT_NAS_URL,
-    val token: String = "",
     /** The evening reminder: off until turned on in Settings (it needs notification permission). */
     val reminderOn: Boolean = false,
     val reminderAt: LocalTime = DEFAULT_REMINDER_TIME,
-) {
-    /** Food is optional (1.1.0): the tab, the calories card and syncing appear once a server is set up. */
-    val foodOn: Boolean get() = nasUrl.isNotBlank() && token.isNotBlank()
-}
-
-/** No default server: Food stays hidden until someone connects their own arise-food. */
-const val DEFAULT_NAS_URL = ""
+)
 
 class Prefs(private val context: Context) {
     private val themeKey = stringPreferencesKey("theme")
@@ -42,8 +34,6 @@ class Prefs(private val context: Context) {
     private val accentKey = stringPreferencesKey("accent")
     private val celebrateKey = booleanPreferencesKey("celebrate")
     private val meditateKey = stringPreferencesKey("meditate_app")
-    private val nasKey = stringPreferencesKey("nas_url")
-    private val tokenKey = stringPreferencesKey("nas_token")
     private val reminderOnKey = booleanPreferencesKey("reminder_on")
     private val reminderAtKey = stringPreferencesKey("reminder_at")
 
@@ -54,8 +44,6 @@ class Prefs(private val context: Context) {
             accent = p[accentKey]?.let { v -> AccentPref.entries.firstOrNull { it.name == v } } ?: AccentPref.ORANGE,
             meditateApp = p[meditateKey] ?: "",
             celebrate = p[celebrateKey] ?: true,
-            nasUrl = p[nasKey] ?: DEFAULT_NAS_URL,
-            token = p[tokenKey] ?: "",
             reminderOn = p[reminderOnKey] ?: false,
             reminderAt = p[reminderAtKey]?.let { runCatching { LocalTime.parse(it) }.getOrNull() } ?: DEFAULT_REMINDER_TIME,
         )
@@ -88,10 +76,11 @@ class Prefs(private val context: Context) {
         }
     }
 
-    suspend fun setFoodSync(url: String, token: String) {
+    /** 1.2.0 dropped the server food sync: forget its address and token. */
+    suspend fun dropFoodServer() {
         context.store.edit {
-            it[nasKey] = url.trim().trimEnd('/')
-            it[tokenKey] = token.trim()
+            it.remove(stringPreferencesKey("nas_url"))
+            it.remove(stringPreferencesKey("nas_token"))
         }
     }
 }

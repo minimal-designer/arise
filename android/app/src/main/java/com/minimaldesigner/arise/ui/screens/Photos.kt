@@ -48,7 +48,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.minimaldesigner.arise.core.Angle
-import com.minimaldesigner.arise.core.FoodLog
 import com.minimaldesigner.arise.core.PhotoSource
 import com.minimaldesigner.arise.core.Run
 import com.minimaldesigner.arise.core.PhotoPins
@@ -96,7 +95,6 @@ fun Photos(
     run: Run,
     attempts: List<Attempt>,
     photos: List<Photo>,
-    food: FoodLog?,
     health: HealthData?,
     pins: PhotoPins,
     onAdd: () -> Unit,
@@ -127,8 +125,8 @@ fun Photos(
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Fact("Days apart", "${daysBetween(a.meta.date, b.meta.date)}", Modifier.weight(1f))
-                    // Health Connect weights, else same-scale weigh-ins from the food log (v2 weightOn).
-                    val kg = weightDelta(bodyWeights(health, food).first, a.meta.date, b.meta.date)
+                    // Health Connect weights (v2 weightOn).
+                    val kg = weightDelta(bodyWeights(health).first, a.meta.date, b.meta.date)
                     Fact("Weight", kg?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "–", Modifier.weight(1f))
                     Fact("Photos", "${photos.size}", Modifier.weight(1f))
                 }

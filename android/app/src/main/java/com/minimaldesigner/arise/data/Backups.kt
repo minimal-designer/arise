@@ -9,6 +9,7 @@ import com.minimaldesigner.arise.core.ChallengeInfo
 import com.minimaldesigner.arise.core.BackupRead
 import com.minimaldesigner.arise.core.MetaJson
 import com.minimaldesigner.arise.core.MetaKey
+import com.minimaldesigner.arise.core.FoodGoals
 import com.minimaldesigner.arise.core.decodePause
 import com.minimaldesigner.arise.core.encodePause
 import com.minimaldesigner.arise.core.PhotoPins
@@ -82,6 +83,7 @@ class Backups(private val db: AriseDb, private val store: PhotoStore, private va
             hasProfilePhoto = profile.photo != null && store.file("${profile.photo}.jpg").exists(),
             challenge = MetaJson.decode(ChallengeInfo.serializer(), m[MetaKey.CHALLENGE.key], ChallengeInfo()),
             pause = decodePause(m[MetaKey.PAUSE.key]),
+            foodGoals = MetaJson.decode(FoodGoals.serializer(), m[MetaKey.FOOD_GOALS.key], FoodGoals()),
         )
     }
 
@@ -178,6 +180,7 @@ class Backups(private val db: AriseDb, private val store: PhotoStore, private va
                 dao.upsertMeta(MetaEntity(MetaKey.PINS.key, MetaJson.encode(PhotoPins.serializer(), m.pins)))
                 dao.upsertMeta(MetaEntity(MetaKey.CHALLENGE.key, MetaJson.encode(ChallengeInfo.serializer(), m.challenge)))
                 m.pause?.let { dao.upsertMeta(MetaEntity(MetaKey.PAUSE.key, encodePause(it))) }
+                dao.upsertMeta(MetaEntity(MetaKey.FOOD_GOALS.key, MetaJson.encode(FoodGoals.serializer(), m.foodGoals)))
             }
             profileSaved = null // now owned by the database
             oldProfile?.let { store.delete("$it.jpg", "${it}_t.jpg") }

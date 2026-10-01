@@ -1,6 +1,6 @@
 # ARISE for Android
 
-Package `com.minimaldesigner.arise`. It uses Kotlin, Jetpack Compose, Room and Health Connect.
+Package `com.minimaldesigner.arise`. It uses Kotlin, Jetpack Compose, Room and Health Connect. There's no network code, and no INTERNET permission.
 
 ## Building
 
@@ -9,7 +9,7 @@ GitHub Actions is the usual compiler. A push to `main` or `dev` that touches `an
 1. `:core:test`, `testDebugUnitTest` and `lintDebug`.
 2. `assembleRelease`, signed with the key from the repo secrets. If the `ARISE_CERT_SHA256` variable is set, the workflow checks the certificate against it.
 3. Uploads the `arise-apk` artifact (kept 14 days) and the Room schemas as `room-schemas`.
-4. On a `v*` tag, it also creates a GitHub Release with the APK.
+4. On a `v*` tag, it also creates a GitHub Release with the APK, attached twice: as `arise-<version>-<run>.apk`, and as `arise.apk` for the README's stable download link.
 
 `versionCode` is the run number plus 100. `versionName` comes from `VERSION` in `app/build.gradle.kts`, plus `+<commit>` on untagged builds.
 
@@ -28,4 +28,4 @@ Every update has to be signed with the same key. Android refuses an update signe
   - `ui/theme/` has the colour tokens (light and dark, 7 accents), the fonts and the type scale.
   - `ui/components/` has the card, panel, chips, orb, floating nav, sheets, glyphs and confetti.
   - `ui/screens/` has Home, Week, Food, Photos, Profile & settings, and the sheets.
-  - `data/` has Room (`Db.kt`), the repositories, backups, Health Connect, food sync and reminders.
+  - `data/` has Room (`Db.kt`), the repositories, backups, Health Connect (including food and water) and reminders.

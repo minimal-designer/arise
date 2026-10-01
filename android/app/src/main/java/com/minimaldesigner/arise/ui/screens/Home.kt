@@ -75,7 +75,7 @@ import com.minimaldesigner.arise.core.homeDay
 import com.minimaldesigner.arise.core.recentWorkouts
 import com.minimaldesigner.arise.core.statusOf
 import com.minimaldesigner.arise.core.weekStats
-import com.minimaldesigner.arise.data.FoodState
+import com.minimaldesigner.arise.core.FoodLog
 import com.minimaldesigner.arise.data.HealthState
 import com.minimaldesigner.arise.ui.components.Burst
 import com.minimaldesigner.arise.ui.components.Card
@@ -127,7 +127,7 @@ fun Home(
     p: Progress,
     hour: Int,
     profileThumb: File?,
-    food: FoodState,
+    food: FoodLog?,
     reading: Reading,
     health: HealthState,
     onTask: (TaskDef) -> Unit,
@@ -138,7 +138,7 @@ fun Home(
     /** A break in progress: the paused card stands in for the Today card and the tasks. */
     pause: PauseState.Active? = null,
     onEndPause: () -> Unit = {},
-    /** Food is set up: the calories card shows (else a best-streak card takes its place). */
+    /** Health Connect shares food: the calories card shows (else a best-streak card takes its place). */
     foodOn: Boolean = true,
 ) {
     val c = LocalArise.current
@@ -326,9 +326,13 @@ private fun healthHint(t: TaskDef, d: HealthData?, day: DayRecord?, today: Local
         }
         TaskKind.MIND -> mindfulMinutes(d.mindful, today).takeIf { it > 0 }?.let { "Health Connect: $it min today · tap to log" }
         TaskKind.WALK -> d.steps[today]?.let { "Health Connect: ${fmtInt(it)} steps today" }
+        // Only water tasks: the Water kind also covers the cold shower.
+        TaskKind.WATER -> d.waterL[today]?.takeIf { t.label.contains(" L") }?.let { "Health Connect: ${fmtLitres(it)} L today" }
         else -> null
     }
 }
+
+private fun fmtLitres(l: Double) = String.format(java.util.Locale.US, "%.1f", l)
 
 /** The round avatar with a small settings badge: opens Profile & settings. */
 @Composable
@@ -348,7 +352,7 @@ fun Avatar(name: String, thumb: File?, sizeDp: Int, onClick: () -> Unit) {
 
 @Composable
 private fun HomeGrid(
-    run: Run, days: Days, p: Progress, hour: Int, food: FoodState, foodOn: Boolean,
+    run: Run, days: Days, p: Progress, hour: Int, food: FoodLog?, foodOn: Boolean,
     onOpenWeek: () -> Unit, onOpenFood: () -> Unit, onOpenProfile: () -> Unit,
     onTodayBounds: (Rect) -> Unit,
 ) {
@@ -378,7 +382,7 @@ private fun HomeGrid(
                 }
             } else Card(Modifier.fillMaxWidth(), onClick = onOpenFood) {
                 Lbl("Calories")
-                val fd = food.log?.let { homeDay(it, p.today) }
+                val fd = food?.let { homeDay(it, p.today) }
                 Row(Modifier.padding(top = 10.dp)) {
                     Num(fd?.kcal?.let { fmtInt(it.roundToInt()) } ?: "–", 34f, modifier = Modifier.alignByBaseline())
                     if (fd?.kcal != null) Txt(" kcal", Type.small, c.ink3, Modifier.alignByBaseline())
@@ -386,9 +390,8 @@ private fun HomeGrid(
                 Lbl(
                     when {
                         fd != null -> (if (fd.day == p.today) "Today" else fmtShort(fd.day)) + (fd.protein?.let { " · ${it.roundToInt()} g protein" } ?: "")
-                        !food.configured -> "Set up Food sync"
-                        food.syncing -> "Syncing…"
-                        else -> "No food synced yet"
+                        food == null -> "Reading Health Connect…"
+                        else -> "No food in Health Connect yet"
                     },
                     modifier = Modifier.padding(top = 10.dp), size = 10.5f,
                 )

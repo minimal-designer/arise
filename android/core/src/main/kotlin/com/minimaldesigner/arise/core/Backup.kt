@@ -54,6 +54,8 @@ data class BackupMeta(
     val challenge: ChallengeInfo = ChallengeInfo(),
     /** A break in progress (0.2.1-alpha.3), or null. */
     val pause: Pause? = null,
+    /** Daily food targets (1.2.0). */
+    val foodGoals: FoodGoals = FoodGoals(),
 )
 
 @Serializable

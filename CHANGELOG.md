@@ -5,6 +5,16 @@ Releases are on the [releases page](https://github.com/minimal-designer/arise/re
 
 ## [Unreleased]
 
+## 1.2.0 (2026-10-01)
+### Changed
+- **Food comes from Health Connect.** Log meals in any app that writes to Health Connect (MyFitnessPal, Cronometer, Samsung Health…), then let ARISE read Food. The Food tab, calories card and macros fill in from there: up to 30 days, each meal with its time and type. The Food tab shows once Food is shared
+- **Food goals** (calories, protein, carbs, fat, water) are set in Profile & settings → Body & health, because Health Connect doesn't store them. Backups include them
+- **The self-hosted food server sync is gone**, along with its settings. Weight comes from Health Connect only
+- **No internet permission.** ARISE never goes online
+### Added
+- The Water task shows today's water from Health Connect
+- A stable download link (`releases/latest/download/arise.apk`) and a QR code on the project page
+
 ## 1.1.0 (2026-09-30)
 The first public release. ARISE was built privately through 0.1 and 0.2. This version collects all of that work.
 
@@ -38,4 +48,4 @@ The first public release. ARISE was built privately through 0.1 and 0.2. This ve
 - Backup and restore of everything, photos included, in one zip
 
 ### Food (optional)
-- Connect your own [arise-food](https://github.com/minimal-designer/arise-food) server to see calories, macros, meals and weigh-ins. Without one, the Food tab and calories card stay hidden, and Home shows your best streak instead
+- Connect your own arise-food server to see calories, macros, meals and weigh-ins. Without one, the Food tab and calories card stay hidden, and Home shows your best streak instead (replaced by Health Connect in 1.2.0)

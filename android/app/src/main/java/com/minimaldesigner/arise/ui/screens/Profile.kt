@@ -19,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,7 +63,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
-import com.minimaldesigner.arise.core.FoodLog
+import com.minimaldesigner.arise.core.FoodGoals
 import com.minimaldesigner.arise.core.WeightSource
 import com.minimaldesigner.arise.core.bmi
 import com.minimaldesigner.arise.core.bmiBand
@@ -98,7 +97,6 @@ import com.minimaldesigner.arise.ui.fmtSpan
 import com.minimaldesigner.arise.ui.theme.AccentPref
 import java.io.File
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -177,7 +175,6 @@ fun ProfileScreen(
     meta: AppMeta,
     history: List<PastRun>,
     profileThumb: File?,
-    food: FoodLog?,
     health: HealthState,
     photoCount: Int,
     books: List<BookEntry>,
@@ -198,8 +195,7 @@ fun ProfileScreen(
     onCelebrate: (Boolean) -> Unit,
     onChooseMeditateApp: () -> Unit,
     onReminder: (on: Boolean, at: LocalTime) -> Unit,
-    onSaveFoodSync: (url: String, token: String) -> Unit,
-    onTestFoodSync: suspend (url: String, token: String) -> String,
+    onFoodGoals: (FoodGoals) -> Unit,
     busy: String?,
     onBackup: (Uri) -> Unit,
     onRestore: (Uri) -> Unit,
@@ -230,10 +226,11 @@ fun ProfileScreen(
         ) { pg ->
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 when (pg) {
-                    SettingsPage.HUB -> Hub(run, p, settings, meta, profileThumb, food, health, meditateApp, pause, onPage, onName, onPhoto)
+                    SettingsPage.HUB -> Hub(run, p, settings, meta, profileThumb, health, meditateApp, pause, onPage, onName, onPhoto)
                     SettingsPage.CHALLENGE -> ChallengePage(run, p, history, photoCount, pause, passesLeft, onAttempts, onPause, onEndPause, onEnd)
                     SettingsPage.BODY -> {
-                        BodyCard(run, meta, food, health, onBody)
+                        BodyCard(run, meta, health, onBody)
+                        FoodGoalsCard(meta.foodGoals, health, onFoodGoals)
                         Sec("Health Connect")
                         HealthCard(health, onConnectHealth, onOpenHealth, onRefreshHealth)
                     }
@@ -247,8 +244,6 @@ fun ProfileScreen(
                     SettingsPage.DATA -> {
                         Sec("Backup")
                         DataCard(busy, onBackup, onRestore, onImport75)
-                        Sec("Food log (optional)")
-                        FoodSyncCard(settings, onSaveFoodSync, onTestFoodSync)
                     }
                     SettingsPage.ABOUT -> AboutCard()
                 }
@@ -264,7 +259,6 @@ private fun Hub(
     settings: Settings,
     meta: AppMeta,
     profileThumb: File?,
-    food: FoodLog?,
     health: HealthState,
     meditateApp: String?,
     pause: PauseState?,
@@ -296,7 +290,7 @@ private fun Hub(
     }
 
     Card(Modifier.fillMaxWidth(), padding = PaddingValues(0.dp)) {
-        val weight = bodyWeights(health.data, food).first.lastOrNull()
+        val weight = bodyWeights(health.data).first.lastOrNull()
         val r = meta.reading
         NavRow(Glyph.Flame, "Challenge", if (pause != null) "Paused · back ${fmtShort(pause.pause.untilDate)}" else if (p.started) "Day ${pad2(p.dayNum)} / ${p.len}" else "Starts ${fmtShort(run.startDate)}") { onPage(SettingsPage.CHALLENGE) }
         Rule()
@@ -310,7 +304,7 @@ private fun Hub(
         Rule()
         NavRow(Glyph.Bell, "Notifications", if (settings.reminderOn) fmtTime(settings.reminderAt) else "Off") { onPage(SettingsPage.NOTIFICATIONS) }
         Rule()
-        NavRow(Glyph.Data, "Data", if (settings.foodOn) "Backup · food log" else "Backup") { onPage(SettingsPage.DATA) }
+        NavRow(Glyph.Data, "Data", "Backup") { onPage(SettingsPage.DATA) }
         Rule()
         NavRow(Glyph.Info, "About", "") { onPage(SettingsPage.ABOUT) }
     }
@@ -368,13 +362,13 @@ private fun ChallengePage(
 }
 
 @Composable
-private fun BodyCard(run: Run, meta: AppMeta, food: FoodLog?, health: HealthState, onBody: (heightCm: Double?, goalKg: Double?) -> Unit) {
+private fun BodyCard(run: Run, meta: AppMeta, health: HealthState, onBody: (heightCm: Double?, goalKg: Double?) -> Unit) {
     val c = LocalArise.current
     var height by rememberSaveable(meta.profile.heightCm) { mutableStateOf(meta.profile.heightCm?.let(::trimNum).orEmpty()) }
     var goal by rememberSaveable(meta.profile.goalKg) { mutableStateOf(meta.profile.goalKg?.let(::trimNum).orEmpty()) }
     Sec("Body")
     Card(Modifier.fillMaxWidth(), padding = PaddingValues(0.dp)) {
-        val (weights, source) = bodyWeights(health.data, food)
+        val (weights, source) = bodyWeights(health.data)
         val start = startWeight(weights, run.startDate)
         val last = weights.lastOrNull()
         val hcHeight = health.data?.heightCm
@@ -423,15 +417,56 @@ private fun BodyCard(run: Run, meta: AppMeta, food: FoodLog?, health: HealthStat
         }
         val changed = height != (meta.profile.heightCm?.let(::trimNum).orEmpty()) || goal != (meta.profile.goalKg?.let(::trimNum).orEmpty())
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            val scale = food?.weighIns?.firstOrNull()?.scale
             val from = when (source) {
                 WeightSource.HEALTH -> "Weight${if (hcHeight != null) " and height" else ""} from Health Connect."
-                WeightSource.FOOD -> "Weights come from your food log's weigh-ins${scale?.let { " on the $it scale" } ?: ""}." +
-                    (if (hcHeight != null) " Height from Health Connect." else "")
-                WeightSource.NONE -> if (health.on) "No weights in Health Connect or the food log yet." else "Connect Health Connect below to bring in your weight."
+                WeightSource.NONE -> if (health.on) "No weights in Health Connect yet." else "Connect Health Connect below to bring in your weight."
             }
             Txt(from, Type.sub, c.ink3, Modifier.weight(1f))
             if (changed) Btn("Save", { onBody(height.toDoubleOrNull(), goal.toDoubleOrNull()) }, small = true)
+        }
+    }
+}
+
+@Composable
+private fun GoalRow(label: String, value: String, unit: String, onValue: (String) -> Unit) {
+    ListRow(label) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Field(value, { onValue(it.filter { ch -> ch.isDigit() || ch == '.' }) }, Modifier.width(84.dp), placeholder = "–", keyboard = KeyboardOptions(keyboardType = KeyboardType.Decimal), maxLength = 6)
+            Val(unit)
+        }
+    }
+}
+
+/** Daily food targets (1.2.0): Health Connect has the meals but no goals, so they're set here. */
+@Composable
+private fun FoodGoalsCard(goals: FoodGoals, health: HealthState, onSave: (FoodGoals) -> Unit) {
+    val c = LocalArise.current
+    fun str(v: Double?) = v?.let(::trimNum).orEmpty()
+    var kcal by rememberSaveable(goals) { mutableStateOf(str(goals.kcal)) }
+    var protein by rememberSaveable(goals) { mutableStateOf(str(goals.protein)) }
+    var carbs by rememberSaveable(goals) { mutableStateOf(str(goals.carbs)) }
+    var fat by rememberSaveable(goals) { mutableStateOf(str(goals.fat)) }
+    var water by rememberSaveable(goals) { mutableStateOf(str(goals.waterL)) }
+    fun num(s: String) = s.toDoubleOrNull()?.takeIf { it > 0 }
+    val next = FoodGoals(num(kcal), num(protein), num(carbs), num(fat), num(water))
+    Sec("Food goals")
+    Card(Modifier.fillMaxWidth(), padding = PaddingValues(0.dp)) {
+        GoalRow("Calories", kcal, "kcal") { kcal = it }
+        Rule()
+        GoalRow("Protein", protein, "g") { protein = it }
+        Rule()
+        GoalRow("Carbs", carbs, "g") { carbs = it }
+        Rule()
+        GoalRow("Fat", fat, "g") { fat = it }
+        Rule()
+        GoalRow("Water", water, "L") { water = it }
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Txt(
+                if (HealthKind.NUTRITION in health.granted) "Meals come from Health Connect. The Food tab measures each day against these."
+                else "Meals come from Health Connect: let ARISE read Food below, and the Food tab appears.",
+                Type.sub, c.ink3, Modifier.weight(1f),
+            )
+            if (next != goals) Btn("Save", { onSave(next) }, small = true)
         }
     }
 }
@@ -564,42 +599,6 @@ private fun AppearanceCard(settings: Settings, onTheme: (ThemePref) -> Unit, onN
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ToggleSwitch(settings.celebrate, onCelebrate, if (settings.celebrate) "Confetti on" else "Confetti off")
             Txt("A small burst when you tick a task, and a few big ones when the day is clear. The haptic clicks stay either way. No confetti when the phone's animations are off.", Type.small, c.ink2)
-        }
-    }
-}
-
-@Composable
-private fun FoodSyncCard(settings: Settings, onSaveFoodSync: (url: String, token: String) -> Unit, onTestFoodSync: suspend (url: String, token: String) -> String) {
-    val c = LocalArise.current
-    val scope = rememberCoroutineScope()
-    var url by rememberSaveable(settings.nasUrl) { mutableStateOf(settings.nasUrl) }
-    var token by rememberSaveable(settings.token) { mutableStateOf(settings.token) }
-    var testing by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf("") }
-    Card(Modifier.fillMaxWidth()) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Txt(
-                "Optional. Connect your own arise-food server to see calories, meals and weigh-ins here. " +
-                    "Setup: github.com/minimal-designer/arise-food",
-                Type.small, c.ink2,
-            )
-            Labeled("Server address") {
-                Field(url, { url = it }, placeholder = "https://food.example.com", keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri), maxLength = 200)
-            }
-            Labeled("Token") {
-                Field(token, { token = it }, placeholder = "From arise-food's .env", keyboard = KeyboardOptions(keyboardType = KeyboardType.Password), maxLength = 200, mask = true)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Btn("Save", { onSaveFoodSync(url, token) }, Modifier.weight(1f), small = true)
-                Btn(if (testing) "Testing…" else "Test connection", {
-                    testing = true; result = ""
-                    scope.launch {
-                        result = onTestFoodSync(url, token)
-                        testing = false
-                    }
-                }, Modifier.weight(1f), BtnKind.Ghost, small = true, enabled = !testing)
-            }
-            if (result.isNotEmpty()) Txt(result, Type.small, if (result.startsWith("OK")) c.good else c.bad)
         }
     }
 }
