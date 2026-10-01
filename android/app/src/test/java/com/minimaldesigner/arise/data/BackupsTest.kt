@@ -7,6 +7,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.minimaldesigner.arise.core.BadBackup
 import com.minimaldesigner.arise.core.DayRecord
+import com.minimaldesigner.arise.core.FoodGoals
 import com.minimaldesigner.arise.core.PhotoPins
 import com.minimaldesigner.arise.core.Profile
 import com.minimaldesigner.arise.core.ReadLog
@@ -94,6 +95,7 @@ class BackupsTest {
         val f = File(ctx.cacheDir, "me.jpg").apply { writeBytes(jpeg(Color.BLUE)) }
         store.save(f, "profile-1")
         repo.setProfile(Profile(photo = "profile-1", heightCm = 188.0))
+        repo.setFoodGoals(FoodGoals(kcal = 2000.0, protein = 150.0))
     }
 
     @Test fun `backup, wipe and restore gives back the same data`() = runBlocking {
@@ -114,6 +116,7 @@ class BackupsTest {
         assertEquals(188.0, meta.profile.heightCm)
         assertEquals(Reading("Book", 40, 300, 1), meta.reading)
         assertEquals("p1", meta.pins.before)
+        assertEquals(FoodGoals(kcal = 2000.0, protein = 150.0), meta.foodGoals)
         assertTrue(store.file("${meta.profile.photo}_t.jpg").length() > 0)
         assertEquals(ReadLog("Book", 40, 300, 12), repo.days.first()[LocalDate.of(2026, 9, 19)]?.read)
     }

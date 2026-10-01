@@ -180,7 +180,7 @@ class Backups(private val db: AriseDb, private val store: PhotoStore, private va
                 dao.upsertMeta(MetaEntity(MetaKey.PINS.key, MetaJson.encode(PhotoPins.serializer(), m.pins)))
                 dao.upsertMeta(MetaEntity(MetaKey.CHALLENGE.key, MetaJson.encode(ChallengeInfo.serializer(), m.challenge)))
                 m.pause?.let { dao.upsertMeta(MetaEntity(MetaKey.PAUSE.key, encodePause(it))) }
-                dao.upsertMeta(MetaEntity(MetaKey.FOOD_GOALS.key, MetaJson.encode(FoodGoals.serializer(), m.foodGoals)))
+                if (m.foodGoals != FoodGoals()) dao.upsertMeta(MetaEntity(MetaKey.FOOD_GOALS.key, MetaJson.encode(FoodGoals.serializer(), m.foodGoals)))
             }
             profileSaved = null // now owned by the database
             oldProfile?.let { store.delete("$it.jpg", "${it}_t.jpg") }
